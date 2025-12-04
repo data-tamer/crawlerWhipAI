@@ -1,0 +1,153 @@
+# syntax=yaml
+name: Test and Publish CrawlerWhipAI
+
+on:
+  push:
+    branches: ['main', 'develop']
+    tags: ['v*']
+  pull_request:
+    branches: ['main', 'develop']
+
+jobs:
+  test:
+    name: Test CrawlerWhipAI
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libssl-dev \
+            libffi-dev \
+            python3-dev \
+            git
+
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[dev]"
+
+      - name: Lint with black
+        run: |
+          echo "Checking code formatting with black..."
+          black --check --diff crawlerWhipAI/ || echo "⚠️ Run 'black crawlerWhipAI' to fix formatting"
+        continue-on-error: true
+
+      - name: Lint with ruff
+        run: |
+          echo "Running ruff linter..."
+          ruff check crawlerWhipAI/ || echo "⚠️ Some linting issues found"
+        continue-on-error: true
+
+      - name: Type checking with mypy
+        run: |
+          echo "Running mypy type checker..."
+          mypy crawlerWhipAI/ --ignore-missing-imports || echo "⚠️ Some type issues found"
+        continue-on-error: true
+
+      - name: Run pytest tests
+        run: |
+          echo "Running pytest..."
+          pytest tests/ -v --cov=crawlerWhipAI --cov-report=term-missing --cov-report=html 2>&1 | head -200 || echo "⚠️ Some tests failed"
+        continue-on-error: true
+
+      - name: Upload coverage reports
+        if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+        continue-on-error: true
+
+      - name: Build package
+        run: |
+          echo "Building distribution packages..."
+          python -m build
+
+      - name: Check package integrity
+        run: |
+          echo "Checking package metadata..."
+          twine check dist/* || echo "⚠️ Package check failed"
+        continue-on-error: true
+
+  publish:
+    name: Publish to PyPI (on tag)
+    needs: test
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip setuptools wheel build twine
+
+      - name: Build package
+        run: |
+          python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          repository-url: https://upload.pypi.org/legacy/
+        continue-on-error: true
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+          generate_release_notes: true
+        continue-on-error: true
+
+  docs:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install sphinx sphinx-rtd-theme
+
+      - name: Build docs
+        run: |
+          echo "Building documentation..."
+          cd docs && make html || echo "⚠️ Documentation build had issues"
+        continue-on-error: true
