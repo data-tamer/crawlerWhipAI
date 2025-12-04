@@ -81,6 +81,10 @@ class BrowserConfig(BaseModel):
         default=None,
         description="Locale (e.g., 'en-US')"
     )
+    proxy: Optional[str] = Field(
+        default=None,
+        description="Proxy URL (http://user:pass@host:port)"
+    )
 
 
 class CrawlerConfig(BaseModel):
@@ -193,10 +197,6 @@ class CrawlerConfig(BaseModel):
     )
 
     # HTTP
-    proxy: Optional[str] = Field(
-        default=None,
-        description="Proxy URL (http://user:pass@host:port)"
-    )
     headers: Dict[str, str] = Field(
         default_factory=dict,
         description="Custom HTTP headers"
