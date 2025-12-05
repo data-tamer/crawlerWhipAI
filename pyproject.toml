@@ -115,8 +115,9 @@ Documentation = "https://datatamer.ai/docs/crawlerwhipai"
 Repository = "https://github.com/data-tamer/crawlerWhipAI"
 Issues = "https://github.com/data-tamer/crawlerWhipAI/issues"
 
-[tool.setuptools]
-packages = ["crawlerWhipAI"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["crawlerWhipAI*"]
 
 [tool.setuptools.package-data]
 crawlerWhipAI = ["py.typed"]
