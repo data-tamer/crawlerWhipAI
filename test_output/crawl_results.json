@@ -1,0 +1,96 @@
+[
+  {
+    "url": "https://httpbin.org/",
+    "status_code": 200,
+    "title": "httpbin.org",
+    "description": null,
+    "markdown": "\n    \n    httpbin.org\n    \n    \n    \n    \n\n\n    [1]\n            \n            \n            \n        \n    \n    \n        \n            \n                \n            \n\n            \n                \n            \n\n            \n                \n            \n\n            \n                \n            \n\n            \n                \n            \n\n\n            \n                \n            \n\n            \n                \n            \n\n        \n    \n\n\n    \n                                ## httpbin.org\n                                    \n                                        0.9.2\n\n\n                                ```\n[ Base URL: httpbin.org/ ]\n```\n\n\n                            A simple HTTP Request & Response Service.\n                                        \n                                        \n                                        Run locally: \n                                        $ docker run -p 80:80 kennethreitz/httpbin\n\nthe developer - Website[2]Send email to the developer[3] ADDS THE LOADER SPINNER \n\n\n    [Powered by\n                    Flasgger]Flasgger[4]]\n                    \n                \n\n\n\n    ## Other Utilities\n\n- HTML form that posts to /post /forms/post\n\n\n\n\n",
+    "crawled_at": "2025-12-05T02:49:16.572020",
+    "execution_time": 34.12895679473877,
+    "links": {
+      "internal": [
+        {
+          "href": "https://httpbin.org/",
+          "text": "HTTP Methods"
+        },
+        {
+          "href": "https://httpbin.org/",
+          "text": "Auth"
+        },
+        {
+          "href": "https://httpbin.org/",
+          "text": "Status codes"
+        },
+        {
+          "href": "https://httpbin.org/",
+          "text": "Request inspection"
+        },
+        {
+          "href": "https://httpbin.org/",
+          "text": "Response inspection"
+        },
+        {
+          "href": "https://httpbin.org/",
+          "text": "Response formats"
+        },
+        {
+          "href": "https://httpbin.org/",
+          "text": "Dynamic data"
+        },
+        {
+          "href": "https://httpbin.org/",
+          "text": "Cookies"
+        },
+        {
+          "href": "https://httpbin.org/",
+          "text": "Images"
+        },
+        {
+          "href": "https://httpbin.org/",
+          "text": "Redirects"
+        },
+        {
+          "href": "https://httpbin.org/",
+          "text": "Anything"
+        },
+        {
+          "href": "https://httpbin.org/forms/post",
+          "text": "HTML form"
+        }
+      ],
+      "external": [
+        {
+          "href": "https://github.com/requests/httpbin",
+          "text": ""
+        },
+        {
+          "href": "https://kennethreitz.org",
+          "text": "the developer - Website"
+        },
+        {
+          "href": "mailto:me@kennethreitz.org",
+          "text": "Send email to the developer"
+        },
+        {
+          "href": "https://github.com/rochacbruno/flasgger",
+          "text": "Flasgger"
+        }
+      ]
+    },
+    "meta_tags": {}
+  },
+  {
+    "url": "https://httpbin.org/forms/post",
+    "status_code": 200,
+    "title": null,
+    "description": null,
+    "markdown": "\n  \n  \n   Example form from HTML5 spec http://www.w3.org/TR/html5/forms.html#writing-a-form's-user-interface \n  \n   Customer name:\n\n\n   Telephone:\n\n\n   E-mail address:\n\n\n   \n     Pizza Size \n    Small\n\n\n    Medium\n\n\n    Large\n\n\n   \n   \n     Pizza Toppings \n    Bacon\n\n\n    Extra Cheese\n\n\n    Onion\n\n\n    Mushroom\n\n\n   \n   Preferred delivery time:\n\n\n   Delivery instructions:\n\n\n   Submit order\n\n\n  \n  \n",
+    "crawled_at": "2025-12-05T02:49:47.084572",
+    "execution_time": 30.388529777526855,
+    "links": {
+      "internal": [],
+      "external": []
+    },
+    "meta_tags": {}
+  }
+]

@@ -128,7 +128,10 @@ async def test_deep_link_crawl_with_markdown(capsys):
 
     Crawls a starting page, extracts internal links, follows up to 3 links,
     and converts all pages to markdown. Displays a report of all converted pages.
+    Saves markdown files to ./test_output/markdown/ for download.
     """
+    from crawlerWhipAI import CrawlResult
+
     config = CrawlerConfig(
         page_timeout=30000,
         wait_until="domcontentloaded",
@@ -136,6 +139,7 @@ async def test_deep_link_crawl_with_markdown(capsys):
 
     converter = MarkdownConverter()
     crawled_pages = []
+    crawl_results = []  # Store CrawlResult objects for export
 
     async with AsyncWebCrawler() as crawler:
         # Step 1: Crawl the initial page
@@ -146,6 +150,11 @@ async def test_deep_link_crawl_with_markdown(capsys):
 
         # Convert initial page
         markdown, _, _ = converter.convert(initial_result.html)
+
+        # Update result with converted markdown
+        initial_result.markdown = markdown
+        crawl_results.append(initial_result)
+
         crawled_pages.append({
             "url": initial_result.url,
             "title": initial_result.title,
@@ -179,6 +188,9 @@ async def test_deep_link_crawl_with_markdown(capsys):
             for result in linked_results:
                 if result.success and result.html:
                     md, _, _ = converter.convert(result.html)
+                    result.markdown = md
+                    crawl_results.append(result)
+
                     crawled_pages.append({
                         "url": result.url,
                         "title": result.title,
@@ -189,6 +201,16 @@ async def test_deep_link_crawl_with_markdown(capsys):
                         "depth": 1,
                     })
 
+        # Step 4: Export markdown files to disk
+        output_dir = Path(__file__).parent.parent.parent / "test_output" / "markdown"
+        exporter = MarkdownExporter(with_frontmatter=True)
+        exported_count = await exporter.export(crawl_results, str(output_dir))
+
+        # Also export as JSON for complete data
+        json_exporter = JSONExporter(pretty=True)
+        json_output = Path(__file__).parent.parent.parent / "test_output" / "crawl_results.json"
+        await json_exporter.export(crawl_results, str(json_output))
+
         # Print detailed report
         print("\n" + "=" * 70)
         print("DEEP LINK CRAWL REPORT (Depth: 1)")
@@ -197,6 +219,8 @@ async def test_deep_link_crawl_with_markdown(capsys):
         print(f"Internal links found: {len(internal_links)}")
         print(f"Links followed: {len(links_to_follow)}")
         print(f"Total pages converted: {len(crawled_pages)}")
+        print(f"Files exported: {exported_count}")
+        print(f"Output directory: {output_dir}")
         print("=" * 70)
 
         for i, page in enumerate(crawled_pages, 1):
@@ -218,9 +242,19 @@ async def test_deep_link_crawl_with_markdown(capsys):
             print(f"{i:<3} {page['depth']:<6} {page['status']:<7} {page['markdown_length']:<10} {url_short:<40}")
         print("=" * 70)
 
+        # List exported files
+        print("\nEXPORTED FILES:")
+        print("-" * 70)
+        for md_file in sorted(output_dir.glob("*.md")):
+            print(f"  {md_file.name} ({md_file.stat().st_size} bytes)")
+        print(f"  {json_output.name} ({json_output.stat().st_size} bytes)")
+        print("=" * 70)
+
         # Assertions
         assert len(crawled_pages) >= 1, "Should have crawled at least the initial page"
         assert all(p["markdown_length"] > 0 for p in crawled_pages), "All pages should have markdown"
+        assert exported_count > 0, "Should have exported at least one file"
+        assert output_dir.exists(), "Output directory should exist"
 
 
 @pytest.mark.asyncio
