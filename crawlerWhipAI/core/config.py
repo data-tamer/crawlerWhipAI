@@ -85,6 +85,10 @@ class BrowserConfig(BaseModel):
         default=None,
         description="Proxy URL (http://user:pass@host:port)"
     )
+    cookies: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Cookies to set in browser context"
+    )
 
 
 class CrawlerConfig(BaseModel):
