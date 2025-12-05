@@ -132,7 +132,7 @@ dmypy.json
 .crawl_cache.db
 .crawl_cache.db-shm
 .crawl_cache.db-wal
-export/
+/export/
 .example_cache.db
 .example_cache.db-shm
 .example_cache.db-wal
