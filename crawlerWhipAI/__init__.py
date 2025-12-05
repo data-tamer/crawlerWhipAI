@@ -68,6 +68,13 @@ from .models import (
     ExportResult,
 )
 
+# Utils (browser management)
+from .utils import (
+    check_browser_installed,
+    ensure_browser_installed,
+    get_browser_info,
+)
+
 __all__ = [
     # Version
     "__version__",
@@ -112,4 +119,8 @@ __all__ = [
     "CrawlResult",
     "CrawlBatchResult",
     "ExportResult",
+    # Utils
+    "check_browser_installed",
+    "ensure_browser_installed",
+    "get_browser_info",
 ]

@@ -9,6 +9,13 @@ from .url import (
     validate_url,
     extract_domain_from_url,
 )
+from .browser import (
+    get_playwright_browsers_path,
+    check_browser_installed,
+    install_browser,
+    ensure_browser_installed,
+    get_browser_info,
+)
 
 __all__ = [
     # Async utilities
@@ -22,4 +29,10 @@ __all__ = [
     "get_url_path",
     "validate_url",
     "extract_domain_from_url",
+    # Browser utilities
+    "get_playwright_browsers_path",
+    "check_browser_installed",
+    "install_browser",
+    "ensure_browser_installed",
+    "get_browser_info",
 ]
