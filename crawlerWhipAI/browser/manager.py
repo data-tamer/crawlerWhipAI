@@ -79,6 +79,11 @@ class BrowserManager:
             # Cookies will be added after context creation
             pass
 
+        # Disable JavaScript if configured
+        if self.config.disable_javascript:
+            context_args["java_script_enabled"] = False
+            logger.debug("JavaScript disabled for faster crawling")
+
         self._context = await self._browser.new_context(**context_args)
 
         if self.config.cookies:
@@ -97,8 +102,40 @@ class BrowserManager:
             await self.create_context()
 
         page = await self._context.new_page()
+
+        # Apply resource blocking if configured
+        await self._setup_resource_blocking(page)
+
         logger.debug("New page created")
         return page
+
+    async def _setup_resource_blocking(self, page: Page) -> None:
+        """Set up resource blocking for faster page loads.
+
+        Args:
+            page: Playwright page object.
+        """
+        blocked_types = []
+
+        if self.config.disable_images:
+            blocked_types.extend(['image', 'imageset'])
+
+        if self.config.disable_css:
+            blocked_types.extend(['stylesheet', 'font'])
+
+        # Block additional resource types for faster crawling
+        # These are typically not needed for content extraction
+        blocked_types.extend(['media'])  # video, audio
+
+        if blocked_types:
+            async def block_resources(route):
+                if route.request.resource_type in blocked_types:
+                    await route.abort()
+                else:
+                    await route.continue_()
+
+            await page.route("**/*", block_resources)
+            logger.debug(f"Resource blocking enabled for: {', '.join(blocked_types)}")
 
     async def close(self) -> None:
         """Close browser and cleanup resources."""

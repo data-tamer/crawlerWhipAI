@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "crawlerWhipAI"
-version = "0.1.1"
+version = "0.2.0"
 description = "A modern, async web crawler inspired by Crawl4AI with enhanced features for content archiving, SPA crawling, and intelligent caching"
 readme = "README.md"
 requires-python = ">=3.11"

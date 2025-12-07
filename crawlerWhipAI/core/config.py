@@ -25,9 +25,10 @@ class BrowserType(str, Enum):
 class WaitUntil(str, Enum):
     """Page load wait conditions."""
 
-    DOMCONTENTLOADED = "domcontentloaded"
-    LOAD = "load"
-    NETWORKIDLE = "networkidle"
+    COMMIT = "commit"  # Fastest - when navigation is committed
+    DOMCONTENTLOADED = "domcontentloaded"  # Fast - DOM is ready
+    LOAD = "load"  # Medium - all resources loaded
+    NETWORKIDLE = "networkidle"  # Slowest - no network activity
 
 
 class BrowserConfig(BaseModel):
@@ -48,6 +49,10 @@ class BrowserConfig(BaseModel):
     disable_css: bool = Field(
         default=False,
         description="Disable CSS loading"
+    )
+    disable_javascript: bool = Field(
+        default=False,
+        description="Disable JavaScript execution for faster crawling"
     )
     user_agent: Optional[str] = Field(
         default=None,

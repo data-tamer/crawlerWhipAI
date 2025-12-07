@@ -21,6 +21,7 @@ class LinkMapper:
         max_pages: int = 100,
         include_external: bool = False,
         use_crawler: Optional[AsyncWebCrawler] = None,
+        max_concurrent: int = 5,
     ):
         """Initialize LinkMapper.
 
@@ -29,11 +30,13 @@ class LinkMapper:
             max_pages: Maximum pages to crawl.
             include_external: Whether to include external links.
             use_crawler: Optional AsyncWebCrawler to use (will create one if not provided).
+            max_concurrent: Maximum concurrent requests per depth level.
         """
         self.max_depth = max_depth
         self.max_pages = max_pages
         self.include_external = include_external
         self.crawler = use_crawler
+        self.max_concurrent = max_concurrent
         self.pages_crawled = 0
 
     async def map_links(
@@ -68,85 +71,143 @@ class LinkMapper:
             is_internal=True,
         )
 
-        # BFS traversal
+        # BFS traversal with concurrent crawling per depth level
         visited: Set[str] = {normalize_url(start_url)}
-        queue: list = [(root, 0)]
+        current_depth_nodes = [root]
         self.pages_crawled = 0
 
-        while queue and self.pages_crawled < self.max_pages:
-            current_node, current_depth = queue.pop(0)
+        for current_depth in range(self.max_depth + 1):
+            if not current_depth_nodes or self.pages_crawled >= self.max_pages:
+                break
 
-            # Check depth limit
-            if current_depth > self.max_depth:
-                logger.debug(f"Skipping {current_node.url} (exceeds max_depth)")
-                continue
+            logger.info(f"Processing depth {current_depth} with {len(current_depth_nodes)} nodes")
 
-            # Crawl current page
-            logger.info(f"[Depth {current_depth}] Crawling {current_node.url}")
-            result = await self.crawler.arun(current_node.url, config)
+            # Crawl all nodes at current depth concurrently
+            await self._crawl_depth_level(
+                current_depth_nodes, config, visited, base_domain, current_depth
+            )
 
-            # Update node with crawl result
-            current_node.status_code = result.status_code
-            current_node.crawled_at = result.crawled_at.isoformat() if result.crawled_at else None
-            if not result.success:
-                current_node.error = result.error
-                self.pages_crawled += 1
-                continue
+            # Collect all child nodes for next depth level
+            next_depth_nodes = []
+            for node in current_depth_nodes:
+                next_depth_nodes.extend(node.children)
 
-            # Extract metadata
-            current_node.title = result.title or ""
-            current_node.description = result.description or ""
-            current_node.meta_tags = result.meta_tags.copy() if result.meta_tags else {}
-
-            self.pages_crawled += 1
-
-            # Discover links from current page
-            if current_depth < self.max_depth and self.pages_crawled < self.max_pages:
-                next_depth = current_depth + 1
-                internal_links = result.links.get("internal", [])
-                external_links = result.links.get("external", [])
-
-                links_to_process = internal_links
-                if self.include_external:
-                    links_to_process.extend(external_links)
-
-                for link_data in links_to_process:
-                    link_url = link_data.get("href", "")
-                    if not link_url:
-                        continue
-
-                    normalized_url = normalize_url(link_url)
-
-                    # Skip if already visited
-                    if normalized_url in visited:
-                        continue
-
-                    # Check capacity
-                    if self.pages_crawled >= self.max_pages:
-                        break
-
-                    # Create child node
-                    child_node = LinkNode(
-                        url=normalized_url,
-                        depth=next_depth,
-                        parent_url=current_node.url,
-                        is_internal=is_internal_url(normalized_url, base_domain),
-                    )
-
-                    current_node.children.append(child_node)
-                    visited.add(normalized_url)
-                    queue.append((child_node, next_depth))
-
-                    logger.debug(
-                        f"Discovered link: {normalized_url} (depth={next_depth}, "
-                        f"internal={child_node.is_internal})"
-                    )
+            current_depth_nodes = next_depth_nodes
 
         logger.info(
             f"Link mapping complete: {self.pages_crawled} pages crawled, "
             f"{root.count_nodes()} total nodes"
         )
         return root
+
+    async def _crawl_depth_level(
+        self,
+        nodes: list,
+        config: CrawlerConfig,
+        visited: Set[str],
+        base_domain: str,
+        current_depth: int,
+    ) -> None:
+        """Crawl all nodes at a specific depth level concurrently.
+
+        Args:
+            nodes: List of LinkNode objects to crawl.
+            config: Crawler configuration.
+            visited: Set of already visited URLs.
+            base_domain: Base domain for internal link detection.
+            current_depth: Current depth level.
+        """
+        # Create crawl tasks with semaphore for concurrency control
+        semaphore = asyncio.Semaphore(self.max_concurrent)
+
+        async def crawl_with_sem(node: LinkNode):
+            async with semaphore:
+                if self.pages_crawled >= self.max_pages:
+                    return
+
+                logger.info(f"[Depth {current_depth}] Crawling {node.url}")
+                result = await self.crawler.arun(node.url, config)
+
+                # Update node with crawl result
+                node.status_code = result.status_code
+                node.crawled_at = result.crawled_at.isoformat() if result.crawled_at else None
+
+                if not result.success:
+                    node.error = result.error
+                    self.pages_crawled += 1
+                    return
+
+                # Extract metadata
+                node.title = result.title or ""
+                node.description = result.description or ""
+                node.meta_tags = result.meta_tags.copy() if result.meta_tags else {}
+
+                self.pages_crawled += 1
+
+                # Discover links for next depth
+                if current_depth < self.max_depth and self.pages_crawled < self.max_pages:
+                    await self._discover_child_links(
+                        node, result, visited, base_domain, current_depth
+                    )
+
+        # Execute all crawls concurrently
+        await asyncio.gather(*[crawl_with_sem(node) for node in nodes], return_exceptions=True)
+
+    async def _discover_child_links(
+        self,
+        parent_node: LinkNode,
+        result,
+        visited: Set[str],
+        base_domain: str,
+        current_depth: int,
+    ) -> None:
+        """Discover and create child link nodes.
+
+        Args:
+            parent_node: Parent LinkNode.
+            result: Crawl result containing links.
+            visited: Set of visited URLs.
+            base_domain: Base domain for internal link detection.
+            current_depth: Current depth level.
+        """
+        next_depth = current_depth + 1
+        internal_links = result.links.get("internal", [])
+        external_links = result.links.get("external", [])
+
+        links_to_process = internal_links
+        if self.include_external:
+            links_to_process.extend(external_links)
+
+        for link_data in links_to_process:
+            link_url = link_data.get("href", "")
+            if not link_url:
+                continue
+
+            normalized_url = normalize_url(link_url)
+
+            # Skip if already visited
+            if normalized_url in visited:
+                continue
+
+            # Check capacity
+            if len(visited) >= self.max_pages:
+                break
+
+            # Create child node
+            child_node = LinkNode(
+                url=normalized_url,
+                depth=next_depth,
+                parent_url=parent_node.url,
+                is_internal=is_internal_url(normalized_url, base_domain),
+            )
+
+            parent_node.children.append(child_node)
+            visited.add(normalized_url)
+
+            logger.debug(
+                f"Discovered link: {normalized_url} (depth={next_depth}, "
+                f"internal={child_node.is_internal})"
+            )
 
     def get_all_urls(self, root: LinkNode, max_depth: Optional[int] = None) -> list:
         """Get all discovered URLs from root node.
