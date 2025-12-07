@@ -61,6 +61,9 @@ class CrawlResult(BaseModel):
     )
     pdf: Optional[bytes] = Field(default=None, description="PDF export")
     mhtml: Optional[str] = Field(default=None, description="MHTML snapshot")
+    cached: bool = Field(
+        default=False, description="Whether result came from cache"
+    )
 
     # Execution metadata
     crawled_at: datetime = Field(

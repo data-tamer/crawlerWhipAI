@@ -13,6 +13,7 @@ from lxml import html as lxml_html
 from ..browser.manager import BrowserManager
 from ..models import CrawlResult, MarkdownGenerationResult
 from ..utils import normalize_url, validate_url, get_base_domain, is_internal_url
+from ..cache import CacheStorage
 from .config import BrowserConfig, CrawlerConfig, CacheMode
 
 logger = logging.getLogger(__name__)
@@ -25,21 +26,32 @@ class AsyncWebCrawler:
         self,
         browser_config: Optional[BrowserConfig] = None,
         crawler_config: Optional[CrawlerConfig] = None,
+        cache_db_path: str = ".crawl_cache.db",
     ):
         """Initialize crawler.
 
         Args:
             browser_config: Browser configuration.
             crawler_config: Crawler configuration.
+            cache_db_path: Path to cache database file.
         """
         self.browser_config = browser_config or BrowserConfig()
         self.crawler_config = crawler_config or CrawlerConfig()
         self.browser_manager = BrowserManager(self.browser_config)
+        self.cache = CacheStorage(cache_db_path) if crawler_config and crawler_config.cache_mode != CacheMode.BYPASS else None
         self._initialized = False
 
     async def start(self) -> None:
-        """Start the crawler (launch browser)."""
+        """Start the crawler (launch browser and cache)."""
         await self.browser_manager.init()
+
+        # Initialize cache if enabled
+        if self.cache and self.crawler_config.cache_mode != CacheMode.BYPASS:
+            await self.cache.init()
+            logger.info(f"Cache enabled: mode={self.crawler_config.cache_mode.value}, ttl={self.crawler_config.cache_ttl_hours}h")
+        else:
+            logger.info("Cache disabled (BYPASS mode)")
+
         self._initialized = True
         logger.info("Crawler started")
 
@@ -71,11 +83,48 @@ class AsyncWebCrawler:
         config = config or self.crawler_config
         start_time = time.time()
 
+        # Check cache if enabled and mode allows reading
+        if self.cache and config.cache_mode in [CacheMode.CACHED, CacheMode.READ_ONLY]:
+            cached = await self.cache.get(url)
+            if cached:
+                logger.info(f"Cache hit: {url}")
+                # Return cached result
+                return CrawlResult(
+                    url=url,
+                    success=True,
+                    html=None,  # Not stored in cache
+                    markdown=cached.get("content"),
+                    title=cached.get("metadata", {}).get("title"),
+                    description=cached.get("metadata", {}).get("description"),
+                    status_code=200,
+                    crawled_at=datetime.fromisoformat(cached.get("created_at")),
+                    execution_time=time.time() - start_time,
+                    links=cached.get("metadata", {}).get("links", {"internal": [], "external": []}),
+                    cached=True,
+                )
+
+        # Not in cache or cache mode doesn't allow reading - crawl the page
         try:
             page = await self.browser_manager.new_page()
             result = await self._crawl_page(page, url, config)
             result.execution_time = time.time() - start_time
             await page.close()
+
+            # Save to cache if enabled and mode allows writing
+            if self.cache and result.success and config.cache_mode in [CacheMode.CACHED, CacheMode.WRITE_ONLY]:
+                await self.cache.set(
+                    url,
+                    result.markdown or "",
+                    metadata={
+                        "title": result.title,
+                        "description": result.description,
+                        "status_code": result.status_code,
+                        "links": result.links,
+                    },
+                    ttl_hours=config.cache_ttl_hours,
+                )
+                logger.info(f"Cached: {url} (TTL: {config.cache_ttl_hours}h)")
+
             return result
         except Exception as e:
             logger.error(f"Error crawling {url}: {str(e)}")
