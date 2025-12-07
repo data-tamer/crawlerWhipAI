@@ -63,6 +63,9 @@ class LinkMapper:
         config = crawler_config or CrawlerConfig()
         base_domain = get_base_domain(start_url)
 
+        # Store config for use in child methods
+        self.config = config
+
         # Initialize root node
         root = LinkNode(
             url=start_url,
@@ -72,7 +75,8 @@ class LinkMapper:
         )
 
         # BFS traversal with concurrent crawling per depth level
-        visited: Set[str] = {normalize_url(start_url)}
+        # Preserve fragments if configured (for PWA support)
+        visited: Set[str] = {normalize_url(start_url, preserve_fragment=config.preserve_url_fragment)}
         current_depth_nodes = [root]
         self.pages_crawled = 0
 
@@ -183,7 +187,8 @@ class LinkMapper:
             if not link_url:
                 continue
 
-            normalized_url = normalize_url(link_url)
+            # Preserve fragments if configured (for PWA support)
+            normalized_url = normalize_url(link_url, preserve_fragment=self.config.preserve_url_fragment)
 
             # Skip if already visited
             if normalized_url in visited:

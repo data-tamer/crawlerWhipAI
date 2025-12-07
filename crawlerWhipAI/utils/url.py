@@ -7,14 +7,16 @@ from typing import Optional, Dict, Tuple
 logger = logging.getLogger(__name__)
 
 
-def normalize_url(url: str, base_url: Optional[str] = None) -> str:
+def normalize_url(url: str, base_url: Optional[str] = None, preserve_fragment: bool = False) -> str:
     """Normalize a URL.
 
-    Resolves relative URLs, removes fragments, sorts query parameters, etc.
+    Resolves relative URLs, removes fragments (unless preserve_fragment=True),
+    sorts query parameters, etc.
 
     Args:
         url: URL to normalize.
         base_url: Base URL for relative resolution.
+        preserve_fragment: If True, keep URL fragments for PWA/SPA support.
 
     Returns:
         Normalized URL.
@@ -33,8 +35,9 @@ def normalize_url(url: str, base_url: Optional[str] = None) -> str:
         url = f"https://{url}"
         parsed = urlparse(url)
 
-    # Remove fragment
-    parsed = parsed._replace(fragment="")
+    # Remove fragment (unless preserve_fragment is True for PWA support)
+    if not preserve_fragment:
+        parsed = parsed._replace(fragment="")
 
     # Sort query parameters for consistency
     if parsed.query:

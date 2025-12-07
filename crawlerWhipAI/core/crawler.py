@@ -312,8 +312,12 @@ class AsyncWebCrawler:
                     if not href:
                         continue
 
-                    # Normalize URL
-                    normalized = normalize_url(href, base_url)
+                    # Normalize URL (preserve fragments if configured for PWA support)
+                    normalized = normalize_url(
+                        href,
+                        base_url,
+                        preserve_fragment=self.crawler_config.preserve_url_fragment
+                    )
 
                     # Categorize as internal or external
                     is_internal = is_internal_url(normalized, base_domain)

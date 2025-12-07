@@ -241,6 +241,12 @@ class CrawlerConfig(BaseModel):
         description="Maximum pages to crawl"
     )
 
+    # PWA/SPA support
+    preserve_url_fragment: bool = Field(
+        default=False,
+        description="Preserve URL fragments (#) for PWA/SPA with hash-based routing"
+    )
+
     class Config:
         """Pydantic config."""
         arbitrary_types_allowed = True
