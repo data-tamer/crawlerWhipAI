@@ -1,6 +1,6 @@
 """Version information for CrawlerWhipAI."""
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 __author__ = "DataTamer.ai"
 __author_email__ = "info@datatamer.ai"
 __license__ = "Apache-2.0"

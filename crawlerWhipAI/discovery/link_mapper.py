@@ -7,7 +7,7 @@ from datetime import datetime
 
 from ..models import LinkNode
 from ..core import AsyncWebCrawler, CrawlerConfig
-from ..utils import normalize_url, get_base_domain, is_internal_url
+from ..utils import normalize_url, get_base_domain, is_internal_url, get_full_host, is_same_host
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,7 @@ class LinkMapper:
         max_depth: int = 2,
         max_pages: int = 100,
         include_external: bool = False,
+        same_host_only: bool = False,
         use_crawler: Optional[AsyncWebCrawler] = None,
         max_concurrent: int = 5,
     ):
@@ -28,13 +29,18 @@ class LinkMapper:
         Args:
             max_depth: Maximum crawl depth.
             max_pages: Maximum pages to crawl.
-            include_external: Whether to include external links.
+            include_external: Whether to include external links (different root domains).
+            same_host_only: If True, only crawl URLs with exact same hostname.
+                           This is stricter than include_external=False, which allows
+                           subdomains (e.g., docs.example.com and blog.example.com).
+                           When same_host_only=True, only the exact host is crawled.
             use_crawler: Optional AsyncWebCrawler to use (will create one if not provided).
             max_concurrent: Maximum concurrent requests per depth level.
         """
         self.max_depth = max_depth
         self.max_pages = max_pages
         self.include_external = include_external
+        self.same_host_only = same_host_only
         self.crawler = use_crawler
         self.max_concurrent = max_concurrent
         self.pages_crawled = 0
@@ -53,7 +59,7 @@ class LinkMapper:
         Returns:
             Root LinkNode with hierarchical structure.
         """
-        logger.info(f"Starting link mapping from {start_url} (max_depth={self.max_depth}, max_pages={self.max_pages})")
+        logger.info(f"Starting link mapping from {start_url} (max_depth={self.max_depth}, max_pages={self.max_pages}, same_host_only={self.same_host_only})")
 
         # Initialize crawler if not provided
         if not self.crawler:
@@ -63,8 +69,10 @@ class LinkMapper:
         config = crawler_config or CrawlerConfig()
         base_domain = get_base_domain(start_url)
 
-        # Store config for use in child methods
+        # Store config and start_url for use in child methods
         self.config = config
+        self.start_url = start_url
+        self.start_host = get_full_host(start_url)
 
         # Initialize root node
         root = LinkNode(
@@ -197,6 +205,13 @@ class LinkMapper:
             # Check capacity
             if len(visited) >= self.max_pages:
                 break
+
+            # Check same_host_only filter - skip URLs from different hosts
+            if self.same_host_only:
+                url_host = get_full_host(normalized_url)
+                if url_host != self.start_host:
+                    logger.debug(f"Skipping different host: {normalized_url} (host {url_host} != {self.start_host})")
+                    continue
 
             # Create child node
             child_node = LinkNode(

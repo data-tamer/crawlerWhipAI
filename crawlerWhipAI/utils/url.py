@@ -150,3 +150,42 @@ def extract_domain_from_url(url: str) -> str:
     """
     parsed = urlparse(url)
     return parsed.netloc.lower()
+
+
+def get_full_host(url: str) -> str:
+    """Extract full hostname from URL (including subdomain, excluding port).
+
+    Unlike get_base_domain which returns the root domain (e.g., 'example.com'),
+    this returns the complete hostname (e.g., 'docs.example.com').
+
+    Args:
+        url: URL to extract hostname from.
+
+    Returns:
+        Full hostname in lowercase.
+    """
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+
+    # Remove port if present
+    if ":" in host:
+        host = host.split(":")[0]
+
+    return host
+
+
+def is_same_host(url: str, base_url: str) -> bool:
+    """Check if URL has the exact same hostname as base URL.
+
+    This is stricter than is_internal_url which allows subdomains.
+    Use this when you want to stay on exactly the same host
+    (e.g., docs.example.com should not crawl blog.example.com).
+
+    Args:
+        url: URL to check.
+        base_url: Base URL to compare against.
+
+    Returns:
+        True if URLs have the same hostname.
+    """
+    return get_full_host(url) == get_full_host(base_url)

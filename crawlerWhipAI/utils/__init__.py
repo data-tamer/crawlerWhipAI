@@ -8,6 +8,8 @@ from .url import (
     get_url_path,
     validate_url,
     extract_domain_from_url,
+    get_full_host,
+    is_same_host,
 )
 from .browser import (
     get_playwright_browsers_path,
@@ -29,6 +31,8 @@ __all__ = [
     "get_url_path",
     "validate_url",
     "extract_domain_from_url",
+    "get_full_host",
+    "is_same_host",
     # Browser utilities
     "get_playwright_browsers_path",
     "check_browser_installed",
