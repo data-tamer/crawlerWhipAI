@@ -33,6 +33,8 @@ from .content import (
 # Discovery
 from .discovery import (
     LinkMapper,
+    LightweightLinkMapper,
+    SitemapParser,
     PatternFilter,
     DomainFilter,
     ExtensionFilter,
@@ -95,6 +97,8 @@ __all__ = [
     "FilterChain",
     # Discovery
     "LinkMapper",
+    "LightweightLinkMapper",
+    "SitemapParser",
     "PatternFilter",
     "DomainFilter",
     "ExtensionFilter",
