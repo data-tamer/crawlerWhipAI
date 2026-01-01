@@ -125,6 +125,7 @@ async def wait_for_cloudflare(
 async def detect_and_handle_cloudflare(
     page: Page,
     timeout: int = 15000,
+    quick_detect: bool = True,
 ) -> Tuple[bool, Optional[str]]:
     """
     Detect and handle Cloudflare challenge if present.
@@ -132,11 +133,13 @@ async def detect_and_handle_cloudflare(
     Args:
         page: Playwright page object.
         timeout: Maximum wait time in milliseconds.
+        quick_detect: If True, return immediately when Cloudflare is detected
+                     without waiting (for fast fallback to nodriver).
 
     Returns:
         Tuple of (is_blocked, error_message).
         - (False, None) = No Cloudflare or challenge passed
-        - (True, "error") = Challenge failed/blocked
+        - (True, "error") = Challenge detected/failed
     """
     # First check if this is a Cloudflare challenge
     is_challenge = await is_cloudflare_challenge(page)
@@ -144,7 +147,13 @@ async def detect_and_handle_cloudflare(
     if not is_challenge:
         return False, None
 
-    # Try to wait for challenge to complete
+    # Quick detect mode: return immediately when CF is detected
+    # This allows fast fallback to nodriver without waiting 15-20 seconds
+    if quick_detect:
+        logger.info("Cloudflare challenge detected - skipping wait for fast nodriver fallback")
+        return True, "Cloudflare challenge detected (quick mode)"
+
+    # Try to wait for challenge to complete (slow path)
     success, message = await wait_for_cloudflare(page, timeout)
 
     if success:
