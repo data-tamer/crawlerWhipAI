@@ -66,6 +66,10 @@ class BrowserConfig(BaseModel):
         default=False,
         description="Use stealth mode to avoid bot detection"
     )
+    cloudflare_bypass: bool = Field(
+        default=False,
+        description="Enable Cloudflare bypass with comprehensive stealth"
+    )
     viewport_width: int = Field(
         default=1920,
         description="Viewport width in pixels"
@@ -255,6 +259,20 @@ class CrawlerConfig(BaseModel):
     http_timeout: float = Field(
         default=10.0,
         description="Timeout for HTTP-first fetch in seconds"
+    )
+
+    # Cloudflare bypass
+    cloudflare_wait: bool = Field(
+        default=True,
+        description="Wait for Cloudflare challenge to complete (when cloudflare_bypass enabled)"
+    )
+    cloudflare_timeout: int = Field(
+        default=15000,
+        description="Timeout for Cloudflare challenge in milliseconds"
+    )
+    use_nodriver_fallback: bool = Field(
+        default=False,
+        description="Use nodriver as fallback for heavily protected sites"
     )
 
     class Config:

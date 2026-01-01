@@ -12,6 +12,12 @@ from playwright.async_api import Page
 from lxml import html as lxml_html
 
 from ..browser.manager import BrowserManager
+from ..browser.cloudflare import (
+    is_cloudflare_challenge,
+    wait_for_cloudflare,
+    detect_and_handle_cloudflare,
+)
+from ..browser.nodriver_fallback import fetch_with_nodriver, HAS_NODRIVER
 from ..models import CrawlResult, MarkdownGenerationResult
 from ..utils import normalize_url, validate_url, get_base_domain, is_internal_url
 from ..cache import CacheStorage
@@ -423,6 +429,26 @@ class AsyncWebCrawler:
             logger.warning(f"Navigation failed: {str(e)}")
             status_code = None
 
+        # Handle Cloudflare challenge if cloudflare_bypass is enabled
+        if self.browser_config.cloudflare_bypass and config.cloudflare_wait:
+            is_blocked, error = await detect_and_handle_cloudflare(
+                page,
+                timeout=config.cloudflare_timeout,
+            )
+            if is_blocked:
+                logger.warning(f"Cloudflare blocked: {error}")
+                # Try nodriver fallback if enabled
+                if config.use_nodriver_fallback and HAS_NODRIVER:
+                    return await self._nodriver_fallback(url, config)
+                else:
+                    return CrawlResult(
+                        url=url,
+                        success=False,
+                        error=f"Cloudflare challenge failed: {error}",
+                        error_type="CloudflareBlocked",
+                        status_code=403,
+                    )
+
         # Execute user JavaScript if provided
         if config.js_code:
             await self._execute_js(page, config.js_code)
@@ -642,6 +668,54 @@ class AsyncWebCrawler:
         except Exception as e:
             logger.warning(f"Error converting HTML to markdown: {str(e)}")
             return ""
+
+    async def _nodriver_fallback(self, url: str, config: CrawlerConfig) -> CrawlResult:
+        """
+        Fallback to nodriver for heavily protected sites.
+
+        Args:
+            url: URL to fetch.
+            config: Crawler configuration.
+
+        Returns:
+            CrawlResult.
+        """
+        logger.info(f"Using nodriver fallback for: {url}")
+
+        html, title, description, error = await fetch_with_nodriver(
+            url,
+            timeout=config.page_timeout,
+            wait_for_cf=True,
+        )
+
+        if error:
+            return CrawlResult(
+                url=url,
+                success=False,
+                error=f"nodriver fallback failed: {error}",
+                error_type="NodriverError",
+            )
+
+        # Build result
+        result = CrawlResult(
+            url=url,
+            success=True,
+            status_code=200,
+            html=html,
+            title=title,
+            description=description,
+            crawled_at=datetime.utcnow(),
+        )
+
+        # Extract metadata from HTML
+        if html:
+            self._extract_metadata_from_html(html, result)
+            self._extract_links_from_html(html, result, url)
+            result.markdown = self._html_to_markdown(html)
+            result.content_length = len(html)
+
+        logger.info(f"nodriver fallback successful: {url}")
+        return result
 
     async def __aenter__(self):
         """Async context manager entry."""
