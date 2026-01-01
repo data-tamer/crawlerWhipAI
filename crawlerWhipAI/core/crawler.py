@@ -99,7 +99,7 @@ class AsyncWebCrawler:
                 return CrawlResult(
                     url=url,
                     success=True,
-                    html=None,  # Not stored in cache
+                    html="",  # Not stored in cache
                     markdown=cached.get("content"),
                     title=cached.get("metadata", {}).get("title"),
                     description=cached.get("metadata", {}).get("description"),
