@@ -19,6 +19,7 @@ from ..browser.cloudflare import (
     quick_cloudflare_check,
 )
 from ..browser.nodriver_fallback import fetch_with_nodriver, HAS_NODRIVER
+from ..browser.stealth import get_realistic_user_agent, get_stealth_headers
 from ..models import CrawlResult, MarkdownGenerationResult
 from ..utils import normalize_url, validate_url, get_base_domain, is_internal_url
 from ..cache import CacheStorage
@@ -213,8 +214,11 @@ class AsyncWebCrawler:
         """
         try:
             timeout = aiohttp.ClientTimeout(total=config.http_timeout)
+            # Use stealth headers for better Cloudflare bypass
+            stealth_headers = get_stealth_headers()
+            stealth_headers["User-Agent"] = self.browser_config.user_agent or get_realistic_user_agent()
             headers = {
-                "User-Agent": self.browser_config.user_agent or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                **stealth_headers,
                 **config.headers,
             }
 
