@@ -247,6 +247,16 @@ class CrawlerConfig(BaseModel):
         description="Preserve URL fragments (#) for PWA/SPA with hash-based routing"
     )
 
+    # Performance optimization
+    http_first: bool = Field(
+        default=False,
+        description="Try lightweight HTTP fetch first, fallback to browser if JS needed"
+    )
+    http_timeout: float = Field(
+        default=10.0,
+        description="Timeout for HTTP-first fetch in seconds"
+    )
+
     class Config:
         """Pydantic config."""
         arbitrary_types_allowed = True

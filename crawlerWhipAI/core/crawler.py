@@ -3,10 +3,11 @@
 import logging
 import time
 import asyncio
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 from urllib.parse import urljoin
 
+import aiohttp
 from playwright.async_api import Page
 from lxml import html as lxml_html
 
@@ -105,10 +106,26 @@ class AsyncWebCrawler:
 
         # Not in cache or cache mode doesn't allow reading - crawl the page
         try:
-            page = await self.browser_manager.new_page()
-            result = await self._crawl_page(page, url, config)
+            result = None
+
+            # Try HTTP-first if enabled (faster for static pages)
+            if config.http_first:
+                result = await self._http_fetch(url, config)
+                if result and result.success:
+                    # Check if page needs browser rendering
+                    if self._needs_browser(result.html or ""):
+                        logger.info(f"HTTP fetch succeeded but page needs browser: {url}")
+                        result = None  # Fall through to browser
+                    else:
+                        logger.info(f"HTTP fetch successful (no browser needed): {url}")
+
+            # Fall back to browser if HTTP-first disabled or failed/needs JS
+            if result is None:
+                page = await self.browser_manager.new_page()
+                result = await self._crawl_page(page, url, config)
+                await page.close()
+
             result.execution_time = time.time() - start_time
-            await page.close()
 
             # Save to cache if enabled and mode allows writing
             if self.cache and result.success and config.cache_mode in [CacheMode.CACHED, CacheMode.WRITE_ONLY]:
@@ -169,6 +186,212 @@ class AsyncWebCrawler:
         await self.browser_manager.close()
         self._initialized = False
         logger.info("Crawler closed")
+
+    async def _http_fetch(self, url: str, config: CrawlerConfig) -> Optional[CrawlResult]:
+        """Lightweight HTTP fetch without browser.
+
+        Args:
+            url: URL to fetch.
+            config: Crawler configuration.
+
+        Returns:
+            CrawlResult if successful, None if failed.
+        """
+        try:
+            timeout = aiohttp.ClientTimeout(total=config.http_timeout)
+            headers = {
+                "User-Agent": self.browser_config.user_agent or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                **config.headers,
+            }
+
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, headers=headers, ssl=False) as response:
+                    if response.status != 200:
+                        logger.debug(f"HTTP fetch failed with status {response.status}: {url}")
+                        return None
+
+                    html_content = await response.text()
+
+                    # Build result
+                    result = CrawlResult(
+                        url=url,
+                        success=True,
+                        status_code=response.status,
+                        html=html_content,
+                        crawled_at=datetime.utcnow(),
+                    )
+
+                    # Extract metadata from HTML
+                    self._extract_metadata_from_html(html_content, result)
+
+                    # Extract links from HTML
+                    self._extract_links_from_html(html_content, result, url)
+
+                    # Generate markdown
+                    if html_content:
+                        result.markdown = self._html_to_markdown(html_content)
+
+                    result.content_length = len(html_content)
+                    result.user_agent = headers.get("User-Agent")
+
+                    return result
+
+        except asyncio.TimeoutError:
+            logger.debug(f"HTTP fetch timeout: {url}")
+            return None
+        except Exception as e:
+            logger.debug(f"HTTP fetch error: {url} - {str(e)}")
+            return None
+
+    def _needs_browser(self, html: str) -> bool:
+        """Detect if page needs browser rendering (JS-heavy).
+
+        Args:
+            html: HTML content.
+
+        Returns:
+            True if page needs browser, False otherwise.
+        """
+        if not html:
+            return True
+
+        try:
+            tree = lxml_html.fromstring(html)
+            body = tree.find(".//body")
+
+            if body is None:
+                return True
+
+            # Get text content length
+            text_content = body.text_content().strip()
+            if len(text_content) < 100:
+                # Very little content - likely JS-rendered
+                return True
+
+            # Check for SPA indicators
+            html_lower = html.lower()
+            spa_indicators = [
+                'id="root"',
+                'id="app"',
+                'id="__next"',
+                'ng-app',
+                'data-reactroot',
+                'data-v-',  # Vue
+                '__nuxt',
+            ]
+            for indicator in spa_indicators:
+                if indicator in html_lower:
+                    # Check if there's meaningful content despite SPA framework
+                    # Some pre-rendered SPAs have content
+                    if len(text_content) > 500:
+                        return False
+                    return True
+
+            # Check for noscript with meaningful content
+            noscript = tree.find(".//noscript")
+            if noscript is not None:
+                noscript_text = noscript.text_content().strip()
+                if len(noscript_text) > 50 and "javascript" in noscript_text.lower():
+                    return True
+
+            return False
+
+        except Exception as e:
+            logger.debug(f"Error detecting JS need: {str(e)}")
+            return True  # Default to browser on error
+
+    def _extract_metadata_from_html(self, html: str, result: CrawlResult) -> None:
+        """Extract metadata from HTML without browser.
+
+        Args:
+            html: HTML content.
+            result: CrawlResult to populate.
+        """
+        try:
+            tree = lxml_html.fromstring(html)
+
+            # Title
+            title_elem = tree.find(".//title")
+            if title_elem is not None and title_elem.text:
+                result.title = title_elem.text.strip()
+
+            # og:title fallback
+            og_title = tree.find(".//meta[@property='og:title']")
+            if og_title is not None:
+                og_title_content = og_title.get("content")
+                if og_title_content:
+                    result.meta_tags["og:title"] = og_title_content
+                    if not result.title:
+                        result.title = og_title_content
+
+            # og:image
+            og_image = tree.find(".//meta[@property='og:image']")
+            if og_image is not None:
+                og_image_content = og_image.get("content")
+                if og_image_content:
+                    result.meta_tags["og:image"] = og_image_content
+
+            # Meta description
+            desc = tree.find(".//meta[@name='description']")
+            if desc is not None:
+                result.description = desc.get("content")
+            else:
+                og_desc = tree.find(".//meta[@property='og:description']")
+                if og_desc is not None:
+                    result.description = og_desc.get("content")
+
+        except Exception as e:
+            logger.debug(f"Error extracting metadata from HTML: {str(e)}")
+
+    def _extract_links_from_html(self, html: str, result: CrawlResult, base_url: str) -> None:
+        """Extract links from HTML without browser.
+
+        Args:
+            html: HTML content.
+            result: CrawlResult to populate.
+            base_url: Base URL for relative link resolution.
+        """
+        try:
+            tree = lxml_html.fromstring(html)
+            base_domain = get_base_domain(base_url)
+            internal_links = []
+            external_links = []
+
+            for link in tree.xpath(".//a[@href]"):
+                try:
+                    href = link.get("href")
+                    text = link.text_content()
+
+                    if not href:
+                        continue
+
+                    # Normalize URL
+                    normalized = normalize_url(
+                        href,
+                        base_url,
+                        preserve_fragment=self.crawler_config.preserve_url_fragment
+                    )
+
+                    # Categorize
+                    is_internal = is_internal_url(normalized, base_domain)
+
+                    link_data = {
+                        "href": normalized,
+                        "text": text.strip() if text else "",
+                    }
+
+                    if is_internal:
+                        internal_links.append(link_data)
+                    else:
+                        external_links.append(link_data)
+                except Exception:
+                    pass
+
+            result.links["internal"] = internal_links
+            result.links["external"] = external_links
+
+        except Exception as e:
+            logger.debug(f"Error extracting links from HTML: {str(e)}")
 
     async def _crawl_page(
         self,
