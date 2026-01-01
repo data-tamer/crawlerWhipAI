@@ -686,6 +686,7 @@ class AsyncWebCrawler:
             url,
             timeout=config.page_timeout,
             wait_for_cf=True,
+            headless=False,  # Use headed mode for better Cloudflare bypass
         )
 
         if error:

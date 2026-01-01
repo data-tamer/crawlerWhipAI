@@ -21,6 +21,7 @@ async def fetch_with_nodriver(
     url: str,
     timeout: int = 30000,
     wait_for_cf: bool = True,
+    headless: bool = False,  # Default to headed for better bypass
 ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """
     Fetch a URL using nodriver (undetected Chrome).
@@ -45,14 +46,15 @@ async def fetch_with_nodriver(
     try:
         logger.info(f"Using nodriver fallback for: {url}")
 
-        # Launch undetected Chrome
+        # Launch undetected Chrome (headed mode for better bypass)
         browser = await uc.start(
-            headless=True,
+            headless=headless,
             browser_args=[
                 "--no-first-run",
                 "--no-default-browser-check",
                 "--disable-infobars",
                 "--window-size=1920,1080",
+                "--disable-blink-features=AutomationControlled",
             ]
         )
 
@@ -61,15 +63,30 @@ async def fetch_with_nodriver(
 
         # Wait for Cloudflare challenge if enabled
         if wait_for_cf:
-            # Wait for page to stabilize (Cloudflare typically takes 2-5 seconds)
-            await asyncio.sleep(3)
+            # Wait for page to stabilize (Cloudflare typically takes 5-15 seconds)
+            await asyncio.sleep(5)
 
-            # Check if we're still on a challenge page
-            for attempt in range(10):
+            # Add some mouse movement to look more human
+            try:
+                import random
+                for _ in range(3):
+                    x = random.randint(100, 800)
+                    y = random.randint(100, 600)
+                    await page.evaluate(f"window.moveTo({x}, {y})")
+                    await asyncio.sleep(0.5)
+            except Exception:
+                pass
+
+            # Check if we're still on a challenge page - wait up to 30 seconds
+            for attempt in range(30):
                 title = await page.evaluate("document.title")
-                if title and "just a moment" not in title.lower():
+                if title and "just a moment" not in title.lower() and "checking" not in title.lower():
+                    logger.info(f"Cloudflare challenge passed after {attempt + 5}s: {title}")
                     break
+                logger.debug(f"Waiting for Cloudflare challenge... attempt {attempt + 1}/30")
                 await asyncio.sleep(1)
+            else:
+                logger.warning(f"Cloudflare challenge may not have completed - title: {title}")
 
         # Wait for page to fully load
         await asyncio.sleep(1)
