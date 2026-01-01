@@ -92,15 +92,47 @@ class LightweightLinkMapper:
         self.start_host = parsed.netloc
         self.base_domain = f"{parsed.scheme}://{parsed.netloc}"
 
-        # 1. Try sitemap first (instant)
-        if self.use_sitemap:
-            sitemap_urls = await self.sitemap_parser.get_urls(start_url)
-            if sitemap_urls:
-                logger.info(f"Using sitemap: found {len(sitemap_urls)} URLs")
-                return self._urls_to_link_tree(sitemap_urls, start_url)
+        # Run sitemap and HTTP crawl in PARALLEL for speed
+        # Use whichever completes first with valid results
+        root = None
 
-        # 2. Use HTTP + lxml crawling (fast)
-        root = await self._http_crawl(start_url, crawler_config)
+        if self.use_sitemap:
+            # Start both tasks in parallel
+            sitemap_task = asyncio.create_task(
+                self.sitemap_parser.get_urls(start_url)
+            )
+            http_task = asyncio.create_task(
+                self._http_crawl(start_url, crawler_config)
+            )
+
+            # Wait for sitemap with short timeout (1.5s)
+            # If sitemap found quickly, use it and cancel HTTP
+            try:
+                sitemap_urls = await asyncio.wait_for(sitemap_task, timeout=1.5)
+                if sitemap_urls and len(sitemap_urls) > 1:
+                    logger.info(f"Using sitemap (fast): found {len(sitemap_urls)} URLs")
+                    http_task.cancel()
+                    try:
+                        await http_task
+                    except asyncio.CancelledError:
+                        pass
+                    return self._urls_to_link_tree(sitemap_urls, start_url)
+            except asyncio.TimeoutError:
+                logger.debug("Sitemap slow, using HTTP crawl instead")
+                sitemap_task.cancel()
+                try:
+                    await sitemap_task
+                except asyncio.CancelledError:
+                    pass
+
+            # Use HTTP result
+            try:
+                root = await http_task
+            except asyncio.CancelledError:
+                root = await self._http_crawl(start_url, crawler_config)
+        else:
+            # No sitemap, just HTTP crawl
+            root = await self._http_crawl(start_url, crawler_config)
 
         # 3. Check if we need browser fallback for JS-heavy pages
         if self._js_required_urls:
