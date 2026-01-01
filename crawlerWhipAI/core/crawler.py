@@ -16,6 +16,7 @@ from ..browser.cloudflare import (
     is_cloudflare_challenge,
     wait_for_cloudflare,
     detect_and_handle_cloudflare,
+    quick_cloudflare_check,
 )
 from ..browser.nodriver_fallback import fetch_with_nodriver, HAS_NODRIVER
 from ..models import CrawlResult, MarkdownGenerationResult
@@ -127,6 +128,13 @@ class AsyncWebCrawler:
 
             # Fall back to browser if HTTP-first disabled or failed/needs JS
             if result is None:
+                # Quick Cloudflare check before starting browser (saves ~3+ seconds)
+                if self.browser_config.cloudflare_bypass and config.use_nodriver_fallback and HAS_NODRIVER:
+                    is_cf = await quick_cloudflare_check(url, timeout=3.0)
+                    if is_cf:
+                        logger.info(f"Cloudflare detected via HTTP - skipping Playwright, using nodriver: {url}")
+                        return await self._nodriver_fallback(url, config)
+
                 page = await self.browser_manager.new_page()
                 result = await self._crawl_page(page, url, config)
                 await page.close()

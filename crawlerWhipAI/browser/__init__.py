@@ -7,6 +7,7 @@ from .cloudflare import (
     wait_for_cloudflare,
     detect_and_handle_cloudflare,
     is_cloudflare_blocked_response,
+    quick_cloudflare_check,
 )
 from .nodriver_fallback import fetch_with_nodriver, HAS_NODRIVER
 
@@ -19,6 +20,7 @@ __all__ = [
     "wait_for_cloudflare",
     "detect_and_handle_cloudflare",
     "is_cloudflare_blocked_response",
+    "quick_cloudflare_check",
     "fetch_with_nodriver",
     "HAS_NODRIVER",
 ]

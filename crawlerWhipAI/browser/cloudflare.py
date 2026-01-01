@@ -186,3 +186,49 @@ def is_cloudflare_blocked_response(status_code: int, headers: dict) -> bool:
             return True
 
     return False
+
+
+async def quick_cloudflare_check(url: str, timeout: float = 5.0) -> bool:
+    """
+    Quickly check if a URL is protected by Cloudflare using HTTP HEAD request.
+
+    This is MUCH faster than starting a browser to detect Cloudflare.
+
+    Args:
+        url: URL to check.
+        timeout: Request timeout in seconds.
+
+    Returns:
+        True if Cloudflare protection is detected.
+    """
+    import aiohttp
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.head(
+                url,
+                timeout=aiohttp.ClientTimeout(total=timeout),
+                allow_redirects=True,
+            ) as response:
+                headers = dict(response.headers)
+
+                # Check for Cloudflare headers
+                if is_cloudflare_blocked_response(response.status, headers):
+                    logger.info(f"Cloudflare detected via HTTP check: {url}")
+                    return True
+
+                # Check for Cloudflare server header
+                server = headers.get("server", "").lower()
+                if "cloudflare" in server:
+                    # Site uses Cloudflare but might not be blocking
+                    # Check for challenge cookie
+                    cf_ray = headers.get("cf-ray")
+                    if cf_ray and response.status in (403, 503):
+                        logger.info(f"Cloudflare challenge detected: {url}")
+                        return True
+
+        return False
+
+    except Exception as e:
+        logger.debug(f"HTTP check failed for {url}: {e}")
+        return False
