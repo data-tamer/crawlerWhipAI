@@ -316,8 +316,19 @@ class AsyncWebCrawler:
             result: CrawlResult to populate.
         """
         try:
-            # Title
+            # Open Graph tags (extract first for fallback)
+            og_title = await page.locator("meta[property='og:title']").get_attribute("content")
+            if og_title:
+                result.meta_tags["og:title"] = og_title
+
+            og_image = await page.locator("meta[property='og:image']").get_attribute("content")
+            if og_image:
+                result.meta_tags["og:image"] = og_image
+
+            # Title with og:title fallback
             title = await page.title()
+            if not title:
+                title = og_title
             result.title = title if title else None
 
             # Meta description
@@ -325,15 +336,6 @@ class AsyncWebCrawler:
             if not description:
                 description = await page.locator("meta[property='og:description']").get_attribute("content")
             result.description = description
-
-            # Open Graph tags
-            og_image = await page.locator("meta[property='og:image']").get_attribute("content")
-            if og_image:
-                result.meta_tags["og:image"] = og_image
-
-            og_title = await page.locator("meta[property='og:title']").get_attribute("content")
-            if og_title:
-                result.meta_tags["og:title"] = og_title
 
             logger.debug(f"Extracted metadata: title='{result.title}'")
         except Exception as e:
