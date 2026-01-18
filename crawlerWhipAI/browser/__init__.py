@@ -10,6 +10,10 @@ from .cloudflare import (
     quick_cloudflare_check,
 )
 from .nodriver_fallback import fetch_with_nodriver, HAS_NODRIVER
+from .binary_download import (
+    download_binary_with_nodriver,
+    download_pdf_with_cloudflare_bypass,
+)
 
 __all__ = [
     "BrowserManager",
@@ -23,4 +27,6 @@ __all__ = [
     "quick_cloudflare_check",
     "fetch_with_nodriver",
     "HAS_NODRIVER",
+    "download_binary_with_nodriver",
+    "download_pdf_with_cloudflare_bypass",
 ]

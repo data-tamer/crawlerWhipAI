@@ -77,6 +77,12 @@ from .utils import (
     get_browser_info,
 )
 
+# Browser utilities (binary download with Cloudflare bypass)
+from .browser import (
+    download_binary_with_nodriver,
+    download_pdf_with_cloudflare_bypass,
+)
+
 __all__ = [
     # Version
     "__version__",
@@ -127,4 +133,7 @@ __all__ = [
     "check_browser_installed",
     "ensure_browser_installed",
     "get_browser_info",
+    # Browser (binary download)
+    "download_binary_with_nodriver",
+    "download_pdf_with_cloudflare_bypass",
 ]

@@ -27,6 +27,18 @@ from .config import BrowserConfig, CrawlerConfig, CacheMode
 
 logger = logging.getLogger(__name__)
 
+# File extensions to skip (binary/non-HTML files)
+SKIP_EXTENSIONS = {
+    '.zip', '.tar', '.gz', '.rar', '.7z', '.bz2', '.xz',  # Archives
+    '.exe', '.msi', '.dmg', '.pkg', '.deb', '.rpm', '.app',  # Executables
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',  # Documents
+    '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico', '.webp', '.bmp',  # Images
+    '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.wav', '.ogg',  # Media
+    '.woff', '.woff2', '.ttf', '.eot', '.otf',  # Fonts
+    '.css', '.js', '.map',  # Assets (usually not useful as standalone)
+    '.txt', '.log', '.changelog',  # Plain text files (no HTML structure)
+}
+
 
 class AsyncWebCrawler:
     """Main async web crawler."""
@@ -91,6 +103,19 @@ class AsyncWebCrawler:
 
         config = config or self.crawler_config
         start_time = time.time()
+
+        # Skip binary/non-HTML files based on extension
+        url_lower = url.lower().split('?')[0]  # Remove query params
+        for ext in SKIP_EXTENSIONS:
+            if url_lower.endswith(ext):
+                logger.info(f"Skipping binary/non-HTML file: {url}")
+                return CrawlResult(
+                    url=url,
+                    success=False,
+                    error=f"Skipped binary file with extension {ext}",
+                    error_type="SkippedBinaryFile",
+                    execution_time=time.time() - start_time,
+                )
 
         # Check cache if enabled and mode allows reading
         if self.cache and config.cache_mode in [CacheMode.CACHED, CacheMode.READ_ONLY]:
@@ -224,8 +249,21 @@ class AsyncWebCrawler:
 
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(url, headers=headers, ssl=False) as response:
+                    # For 4xx/5xx errors, return failed result (don't fall back to browser)
+                    if response.status >= 400:
+                        logger.info(f"HTTP {response.status} error, skipping: {url}")
+                        return CrawlResult(
+                            url=url,
+                            success=False,
+                            status_code=response.status,
+                            error=f"HTTP {response.status} error",
+                            error_type="HTTPError",
+                            crawled_at=datetime.utcnow(),
+                        )
+
+                    # For redirects and other non-200, try to follow
                     if response.status != 200:
-                        logger.debug(f"HTTP fetch failed with status {response.status}: {url}")
+                        logger.debug(f"HTTP fetch non-200 status {response.status}: {url}")
                         return None
 
                     html_content = await response.text()
@@ -438,7 +476,20 @@ class AsyncWebCrawler:
             )
             status_code = response.status if response else None
         except Exception as e:
-            logger.warning(f"Navigation failed: {str(e)}")
+            error_msg = str(e)
+            logger.warning(f"Navigation failed: {error_msg}")
+
+            # Abort immediately for download triggers - no point waiting
+            if "Download is starting" in error_msg:
+                logger.info(f"Download triggered, skipping: {url}")
+                return CrawlResult(
+                    url=url,
+                    success=False,
+                    error="Download file - not a webpage",
+                    error_type="DownloadTriggered",
+                    crawled_at=datetime.utcnow(),
+                )
+
             status_code = None
 
         # Handle Cloudflare challenge if cloudflare_bypass is enabled
